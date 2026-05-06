@@ -7,7 +7,7 @@ const PlayerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-   
+
     age: {
       type: Number,
       required: true,
@@ -17,7 +17,23 @@ const PlayerSchema = new mongoose.Schema(
 
     position: {
       type: String,
-      enum: ["Forward", "Midfielder", "Defender", "Goalkeeper"],
+      enum: [
+        "GK",
+        "RB",
+        "RW",
+        "BC",
+        "BL",
+        "WBC",
+        "DM",
+        "CM",
+        "MR",
+        "ML",
+        "CAM",
+        "RW",
+        "LW",
+        "CF",
+        "ST",
+      ],
       required: true,
     },
 
