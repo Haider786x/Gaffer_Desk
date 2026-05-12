@@ -45,18 +45,24 @@ const TeamSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      minlength: 2,
+      maxlength: 100,
     },
 
     country: {
       type: String,
       required: true,
       trim: true,
+      minlength: 2,
+      maxlength: 100,
     },
 
     city: {
       type: String,
       required: true,
       trim: true,
+      minlength: 2,
+      maxlength: 100,
     },
 
     foundedYear: {
@@ -75,6 +81,13 @@ const TeamSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
+      maxlength: 1000,
+    },
+
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
 
     players: [
@@ -86,11 +99,46 @@ const TeamSchema = new mongoose.Schema(
 
     avgOverallRating: {
       type: Number,
-      min: 50,
+      min: 0,
       max: 99,
+      default: 50,
+    },
+
+    budget: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    league: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true },
 );
+
+// Create indexes for frequently queried fields
+TeamSchema.index({ owner: 1 });
+TeamSchema.index({ country: 1 });
+TeamSchema.index({ name: "text" });
+TeamSchema.index({ createdAt: -1 });
+TeamSchema.index({ avgOverallRating: -1 });
+
+// Soft delete middleware
+TeamSchema.query.active = function () {
+  return this.where({ isDeleted: false });
+};
 
 module.exports = mongoose.model("Team", TeamSchema);

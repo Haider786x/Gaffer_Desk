@@ -6,6 +6,8 @@ const PlayerSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      minlength: 2,
+      maxlength: 100,
     },
 
     age: {
@@ -18,21 +20,19 @@ const PlayerSchema = new mongoose.Schema(
     position: {
       type: String,
       enum: [
-        "GK",
-        "RB",
-        "RW",
-        "BC",
-        "BL",
-        "WBC",
-        "DM",
-        "CM",
-        "MR",
-        "ML",
-        "CAM",
-        "RW",
-        "LW",
-        "CF",
-        "ST",
+        "GK", // Goalkeeper
+        "RB", // Right Back
+        "LB", // Left Back
+        "CB", // Center Back
+        "RWB", // Right Wing Back
+        "LWB", // Left Wing Back
+        "DM", // Defensive Midfielder
+        "CM", // Central Midfielder
+        "CAM", // Central Attacking Midfielder
+        "RW", // Right Winger
+        "LW", // Left Winger
+        "CF", // Center Forward
+        "ST", // Striker
       ],
       required: true,
     },
@@ -99,6 +99,12 @@ const PlayerSchema = new mongoose.Schema(
       min: 0,
       max: 99,
       required: true,
+      validate: {
+        validator: function (value) {
+          return value >= this.overallRating;
+        },
+        message: "Potential rating must be >= overall rating",
+      },
     },
 
     // RELATIONSHIPS
@@ -119,6 +125,9 @@ const PlayerSchema = new mongoose.Schema(
     nationality: {
       type: String,
       required: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 100,
     },
 
     jerseyNumber: {
@@ -130,6 +139,13 @@ const PlayerSchema = new mongoose.Schema(
     dateOfBirth: {
       type: Date,
       required: true,
+      validate: {
+        validator: function (value) {
+          const age = new Date().getFullYear() - value.getFullYear();
+          return age >= 16 && age <= 45;
+        },
+        message: "Player age must be between 16 and 45 based on birthdate",
+      },
     },
 
     status: {
@@ -137,8 +153,30 @@ const PlayerSchema = new mongoose.Schema(
       enum: ["Active", "Injured", "Bench", "Loaned"],
       default: "Active",
     },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );
+
+// Create indexes for frequently queried fields
+PlayerSchema.index({ team: 1 });
+PlayerSchema.index({ name: "text" });
+PlayerSchema.index({ overallRating: -1 });
+PlayerSchema.index({ status: 1 });
+PlayerSchema.index({ createdAt: -1 });
+
+// Soft delete middleware
+PlayerSchema.query.active = function () {
+  return this.where({ isDeleted: false });
+};
 
 module.exports = mongoose.model("Player", PlayerSchema);
