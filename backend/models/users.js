@@ -16,16 +16,11 @@ const userSchema = new mongoose.Schema(
       minlength: 6,
     },
 
-    firstName: {
+    username: {
       type: String,
+      required: true,
+      unique: true,
       trim: true,
-      default: "",
-    },
-
-    lastName: {
-      type: String,
-      trim: true,
-      default: "",
     },
 
     teams: [

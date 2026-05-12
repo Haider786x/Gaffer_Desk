@@ -4,8 +4,15 @@ const {
   getUser,
   updateUser,
   deleteUser,
-} = require("../controllers/playerController");
+  getUserTeams,
+} = require("../controllers/userController");
+
+// User profile management
 router.get("/profile", getUser);
-router.post("/profile", updateUser);
+router.put("/profile", updateUser);
 router.delete("/profile", deleteUser);
+
+// User teams management
+router.get("/teams", getUserTeams);
+
 module.exports = router;

@@ -8,9 +8,10 @@ const {
 
 const router = express.Router();
 
-router.post("/:playerId/stats", addStats);
-router.get("/:playerId/stats", getStats);
-router.get("/:playerId/growth", getGrowth);
-router.delete("/:statsId", deleteStats);
+// Player stats operations
+router.post("/:playerId/stats", addStats); // Add/create stats for a player
+router.get("/:playerId/stats", getStats); // Get stats for a player
+router.get("/:playerId/growth", getGrowth); // Get player growth/progression
+router.delete("/:statsId", deleteStats); // Delete specific stat record
 
 module.exports = router;
