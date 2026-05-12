@@ -1,5 +1,6 @@
 const Express = require("express");
 const router = Express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
 const {
   createTeam,
   getTeams,
@@ -9,10 +10,10 @@ const {
 } = require("../controllers/teamController");
 
 // Team CRUD operations
-router.post("/", createTeam); // User creates a new team
-router.get("/", getTeams); // Get all teams (or filter by user)
-router.get("/:id", getTeamById); // Get specific team by ID
-router.put("/:id", updateTeam); // Update team details
-router.delete("/:id", deleteTeam); // Delete team
+router.post("/", authMiddleware, createTeam); // User creates a new team (protected)
+router.get("/", getTeams); // Get all teams (public)
+router.get("/:id", getTeamById); // Get specific team (public)
+router.put("/:id", authMiddleware, updateTeam); // Update team (protected)
+router.delete("/:id", authMiddleware, deleteTeam); // Delete team (protected)
 
 module.exports = router;

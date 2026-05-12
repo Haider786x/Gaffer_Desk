@@ -1,5 +1,6 @@
 const Express = require("express");
 const router = Express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
 const {
   createPlayer,
   getPlayersByTeam,
@@ -9,10 +10,10 @@ const {
 } = require("../controllers/playerController");
 
 // Player operations (associated with teams)
-router.post("/:teamId/create", createPlayer); // Create player for a specific team
-router.get("/:teamId/players", getPlayersByTeam); // Get all players in a team
-router.get("/:id", getPlayerById); // Get specific player by ID
-router.put("/:id", updatePlayer); // Update player details
-router.delete("/:id", deletePlayer); // Delete player
+router.post("/:teamId/create", authMiddleware, createPlayer); // Create player for a specific team (protected)
+router.get("/:teamId/players", getPlayersByTeam); // Get all players in a team (public)
+router.get("/:id", getPlayerById); // Get specific player by ID (public)
+router.put("/:id", authMiddleware, updatePlayer); // Update player details (protected)
+router.delete("/:id", authMiddleware, deletePlayer); // Delete player (protected)
 
 module.exports = router;
