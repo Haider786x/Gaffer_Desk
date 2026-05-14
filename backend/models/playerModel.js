@@ -99,12 +99,6 @@ const PlayerSchema = new mongoose.Schema(
       min: 0,
       max: 99,
       required: true,
-      validate: {
-        validator: function (value) {
-          return value >= this.overallRating;
-        },
-        message: "Potential rating must be >= overall rating",
-      },
     },
 
     // RELATIONSHIPS
@@ -154,6 +148,45 @@ const PlayerSchema = new mongoose.Schema(
       default: "Active",
     },
 
+    /** Public URL path served from /uploads/players/… */
+    photoUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    isStarting: {
+      type: Boolean,
+      default: false,
+    },
+
+    /**
+     * Optional contract expiry date used for transfer value calculations
+     */
+    contractExpiry: {
+      type: Date,
+      default: null,
+    },
+
+    /**
+     * Optional dynamic form score used by market value calculator (0-99)
+     */
+    currentForm: {
+      type: Number,
+      min: 0,
+      max: 99,
+      default: 50,
+    },
+
+    /**
+     * Cached market value (recalculated from player profile + stats)
+     */
+    marketValue: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,
@@ -172,6 +205,7 @@ PlayerSchema.index({ team: 1 });
 PlayerSchema.index({ name: "text" });
 PlayerSchema.index({ overallRating: -1 });
 PlayerSchema.index({ status: 1 });
+PlayerSchema.index({ isStarting: 1 });
 PlayerSchema.index({ createdAt: -1 });
 
 // Soft delete middleware

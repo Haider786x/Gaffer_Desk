@@ -116,6 +116,19 @@ const TeamSchema = new mongoose.Schema(
       default: "",
     },
 
+    recentForm: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    /** Public URL path served from /uploads/teams/… */
+    logoUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,

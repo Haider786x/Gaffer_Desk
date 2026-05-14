@@ -7,12 +7,12 @@ const app = express();
 
 app.use(cors());
 
-app.use(express.json());
+app.use(express.json({ limit: "12mb" }));
 
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    message: "🤖 StatStriker AI Backend Running",
+    message: "🤖 Gaffer Desk AI Backend Running",
   });
 });
 

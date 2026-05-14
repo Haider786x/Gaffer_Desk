@@ -3,6 +3,7 @@ const Player = require("../models/playerModel");
 const Team = require("../models/teamModel");
 const mongoose = require("mongoose");
 const { validationResult } = require("express-validator");
+const { refreshPlayerMarketValue } = require("./playerController");
 
 /**
  * Add stats for a player (team owner only)
@@ -26,6 +27,7 @@ const addStats = async (req, res) => {
       assists,
       manOfTheMatchAwards,
       cleanSheets,
+      seasonOverallRating,
     } = req.body;
 
     // Check if player exists
@@ -77,6 +79,9 @@ const addStats = async (req, res) => {
       assists: assists || 0,
       manOfTheMatchAwards: manOfTheMatchAwards || 0,
       cleanSheets: cleanSheets || 0,
+      ...(seasonOverallRating !== undefined && seasonOverallRating !== null
+        ? { seasonOverallRating }
+        : {}),
     });
 
     await newStats.save();
@@ -87,6 +92,8 @@ const addStats = async (req, res) => {
       { $push: { stats: newStats._id } },
       { new: true },
     );
+
+    await refreshPlayerMarketValue(player);
 
     res.status(201).json({
       success: true,
@@ -182,7 +189,7 @@ const getGrowth = async (req, res) => {
     const growthData = await Stats.aggregate([
       {
         $match: {
-          player: mongoose.Types.ObjectId(playerId),
+          player: new mongoose.Types.ObjectId(playerId),
           isDeleted: false,
         },
       },
@@ -227,7 +234,7 @@ const getGrowth = async (req, res) => {
     })
       .sort({ season: 1 })
       .select(
-        "season matchesPlayed goals assists manOfTheMatchAwards cleanSheets",
+        "season matchesPlayed goals assists manOfTheMatchAwards cleanSheets seasonOverallRating",
       );
 
     const growth = growthData[0] || {
@@ -248,6 +255,7 @@ const getGrowth = async (req, res) => {
         playerName: player.name,
         position: player.position,
         overallRating: player.overallRating,
+        potentialRating: player.potentialRating,
         growth,
         seasonalProgression,
       },
@@ -277,8 +285,14 @@ const updateStats = async (req, res) => {
     }
 
     const { statsId } = req.params;
-    const { matchesPlayed, goals, assists, manOfTheMatchAwards, cleanSheets } =
-      req.body;
+    const {
+      matchesPlayed,
+      goals,
+      assists,
+      manOfTheMatchAwards,
+      cleanSheets,
+      seasonOverallRating,
+    } = req.body;
 
     // Get stats and verify it exists
     const stats = await Stats.findOne({ _id: statsId, isDeleted: false });
@@ -291,6 +305,13 @@ const updateStats = async (req, res) => {
 
     // Get player and team to verify ownership
     const player = await Player.findById(stats.player);
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found",
+      });
+    }
+
     const team = await Team.findById(player.team);
 
     if (!team) {
@@ -308,18 +329,30 @@ const updateStats = async (req, res) => {
       });
     }
 
+    const updates = {};
+    if (matchesPlayed !== undefined) updates.matchesPlayed = matchesPlayed;
+    if (goals !== undefined) updates.goals = goals;
+    if (assists !== undefined) updates.assists = assists;
+    if (manOfTheMatchAwards !== undefined)
+      updates.manOfTheMatchAwards = manOfTheMatchAwards;
+    if (cleanSheets !== undefined) updates.cleanSheets = cleanSheets;
+    if (seasonOverallRating !== undefined)
+      updates.seasonOverallRating = seasonOverallRating;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide at least one field to update",
+      });
+    }
+
     // Update stats
-    const updatedStats = await Stats.findByIdAndUpdate(
-      statsId,
-      {
-        matchesPlayed,
-        goals,
-        assists,
-        manOfTheMatchAwards,
-        cleanSheets,
-      },
-      { new: true, runValidators: true },
-    );
+    const updatedStats = await Stats.findByIdAndUpdate(statsId, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    await refreshPlayerMarketValue(player);
 
     res.status(200).json({
       success: true,
@@ -355,6 +388,13 @@ const deleteStats = async (req, res) => {
 
     // Get player and team to verify ownership
     const player = await Player.findById(stats.player);
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found",
+      });
+    }
+
     const team = await Team.findById(player.team);
 
     if (!team) {
@@ -383,6 +423,8 @@ const deleteStats = async (req, res) => {
       { $pull: { stats: statsId } },
       { new: true },
     );
+
+    await refreshPlayerMarketValue(player);
 
     res.status(200).json({
       success: true,

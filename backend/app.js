@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -8,12 +9,58 @@ const app = express();
 
 // ==================== Security Middleware ====================
 
-// Set security HTTP headers
-app.use(helmet());
+// CORP "same-origin" blocks cross-origin browser reads (e.g. SPA on :5173 calling API on :3000)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
+/**
+ * One allowed origin from env (strips trailing junk like inline // comments dotenv kept)
+ */
+function normalizeOriginEntry(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const firstToken = trimmed.split(/\s+/)[0];
+  try {
+    return new URL(firstToken).origin;
+  } catch {
+    return null;
+  }
+}
+
+// CORS — allow Vite dev (5173) and same-port setups; FRONTEND_URL can be comma-separated
+function parseAllowedOrigins(value) {
+  if (!value || typeof value !== "string" || !value.trim()) return null;
+  const origins = value
+    .split(",")
+    .map((s) => normalizeOriginEntry(s))
+    .filter(Boolean);
+  return origins.length ? origins : null;
+}
+
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+const isProduction = process.env.NODE_ENV === "production";
+const envOrigins = parseAllowedOrigins(process.env.FRONTEND_URL);
+// In dev, merge env + defaults so a single wrong/stale FRONTEND_URL never blocks Vite
+const resolvedOrigins =
+  !isProduction && envOrigins?.length
+    ? [...new Set([...defaultAllowedOrigins, ...envOrigins])]
+    : envOrigins?.length
+      ? envOrigins
+      : defaultAllowedOrigins;
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: resolvedOrigins,
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -22,6 +69,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Player / team images (served at /uploads/...)
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Body parser middleware
 app.use(express.json({ limit: "10mb" }));
@@ -68,10 +118,12 @@ app.use("/api/auth/register", authLimiter);
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
+const teamSeasonStatRoutes = require("./routes/teamSeasonStatRoutes");
 const teamRoutes = require("./routes/teamRoutes");
 const playerRoutes = require("./routes/playerRoutes");
 const statRoutes = require("./routes/statRoutes");
 const userRoutes = require("./routes/userRoute");
+const realPlayerRoutes = require("./routes/realPlayerRoutes");
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -84,10 +136,12 @@ app.get("/health", (req, res) => {
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/teams", teamSeasonStatRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/players", playerRoutes);
 app.use("/api/stats", statRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/real-players", realPlayerRoutes);
 
 // ==================== Error Handling ====================
 

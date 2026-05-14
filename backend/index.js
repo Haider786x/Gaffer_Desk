@@ -37,7 +37,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════╗
-║      🎯 StatStriker API Server        ║
+║      🎯 Gaffer Desk API Server        ║
 ╠════════════════════════════════════════╣
 ║ Environment: ${NODE_ENV.padEnd(29)}║
 ║ Port: ${PORT.toString().padEnd(38)}║

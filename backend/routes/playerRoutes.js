@@ -5,9 +5,13 @@ const {
   createPlayer,
   getPlayersByTeam,
   getPlayerById,
+  getPlayerMarketValue,
+  updatePlayerContract,
   updatePlayer,
   deletePlayer,
+  uploadPlayerPhoto,
 } = require("../controllers/playerController");
+const { uploadPlayerPhotoMiddleware } = require("../middleware/uploadImages");
 
 const router = express.Router();
 
@@ -51,7 +55,13 @@ const validatePlayer = [
     .withMessage("Overall rating must be between 0 and 99"),
   body("potentialRating")
     .isInt({ min: 0, max: 99 })
-    .withMessage("Potential rating must be between 0 and 99"),
+    .withMessage("Potential rating must be between 0 and 99")
+    .custom((val, { req }) => {
+      if (parseInt(val, 10) < parseInt(req.body.overallRating, 10)) {
+        throw new Error("Potential rating must be >= overall rating");
+      }
+      return true;
+    }),
   body("preferredFoot")
     .optional()
     .isIn(["Left", "Right", "Both"])
@@ -101,6 +111,17 @@ const validatePlayerId = [
   param("id").isMongoId().withMessage("Invalid player ID"),
 ];
 
+const validateContractUpdate = [
+  body("contractExpiry")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Invalid contract expiry date (use ISO 8601)"),
+  body("currentForm")
+    .optional()
+    .isInt({ min: 0, max: 99 })
+    .withMessage("Current form must be between 0 and 99"),
+];
+
 // Routes
 router.post(
   "/:teamId/create",
@@ -110,7 +131,35 @@ router.post(
   createPlayer,
 );
 router.get("/:teamId/players", validateTeamId, getPlayersByTeam);
+router.post(
+  "/:id/photo",
+  authMiddleware,
+  validatePlayerId,
+  (req, res, next) => {
+    uploadPlayerPhotoMiddleware(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message:
+            err.code === "LIMIT_FILE_SIZE"
+              ? "File too large (max 2MB)"
+              : err.message || "Upload failed",
+        });
+      }
+      next();
+    });
+  },
+  uploadPlayerPhoto,
+);
 router.get("/:id", validatePlayerId, getPlayerById);
+router.get("/:id/market-value", validatePlayerId, getPlayerMarketValue);
+router.put(
+  "/:id/contract",
+  authMiddleware,
+  validatePlayerId,
+  validateContractUpdate,
+  updatePlayerContract,
+);
 router.put(
   "/:id",
   authMiddleware,

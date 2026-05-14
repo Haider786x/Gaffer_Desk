@@ -1,9 +1,36 @@
+const fs = require("fs");
+const mongoose = require("mongoose");
 const Player = require("../models/playerModel");
 const Team = require("../models/teamModel");
 const User = require("../models/userModel");
 const Stats = require("../models/statModel");
 const { validationResult } = require("express-validator");
 const { updateTeamRating } = require("./teamController");
+const { unlinkPublicUpload } = require("../utils/uploadPaths");
+const { calculatePlayerMarketValue } = require("../utils/marketValueCalculator");
+
+const calculateMarketValueTier = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return "Bronze";
+  if (value < 5000000) return "Bronze";
+  if (value < 20000000) return "Silver";
+  if (value < 60000000) return "Gold";
+  return "Platinum";
+};
+
+const refreshPlayerMarketValue = async (player) => {
+  if (!player) return null;
+  const playerDoc =
+    typeof player.save === "function" ? player : await Player.findById(player._id || player);
+  if (!playerDoc || playerDoc.isDeleted) return null;
+
+  const stats = await Stats.find({ player: playerDoc._id, isDeleted: false }).sort({
+    season: -1,
+  });
+  const valueBreakdown = calculatePlayerMarketValue(playerDoc, stats);
+  playerDoc.marketValue = valueBreakdown.finalValue;
+  await playerDoc.save();
+  return valueBreakdown;
+};
 
 /**
  * Create a new player for a team (team owner only)
@@ -37,7 +64,15 @@ const createPlayer = async (req, res) => {
       jerseyNumber,
       dateOfBirth,
       status,
+      isStarting,
     } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID format",
+      });
+    }
 
     // Check if team exists and user owns it
     const team = await Team.findById(teamId);
@@ -87,10 +122,13 @@ const createPlayer = async (req, res) => {
       jerseyNumber,
       dateOfBirth,
       status,
+      isStarting,
       stats: [],
     });
 
     await newPlayer.save();
+
+    await refreshPlayerMarketValue(newPlayer);
 
     // Add player to team's players array
     await Team.findByIdAndUpdate(
@@ -102,10 +140,14 @@ const createPlayer = async (req, res) => {
     // Update team's average rating
     await updateTeamRating(teamId);
 
+    const createdPlayer = await Player.findById(newPlayer._id)
+      .populate("team")
+      .populate("stats");
+
     res.status(201).json({
       success: true,
       message: "Player created successfully",
-      data: newPlayer,
+      data: createdPlayer || newPlayer,
     });
   } catch (err) {
     console.error("Create player error:", err);
@@ -128,6 +170,13 @@ const getPlayersByTeam = async (req, res) => {
     const skip = (page - 1) * limit;
     const status = req.query.status ? { status: req.query.status } : {};
 
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID format",
+      });
+    }
+
     const team = await Team.findOne({ _id: teamId, isDeleted: false });
     if (!team) {
       return res.status(404).json({
@@ -143,7 +192,8 @@ const getPlayersByTeam = async (req, res) => {
     })
       .skip(skip)
       .limit(limit)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     const total = await Player.countDocuments({
       team: teamId,
@@ -179,12 +229,20 @@ const getPlayerById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid player ID format",
+      });
+    }
+
     const player = await Player.findOne({ _id: id, isDeleted: false })
       .populate({
         path: "team",
         match: { isDeleted: false },
       })
-      .populate("stats");
+      .populate("stats")
+      .lean();
 
     if (!player) {
       return res.status(404).json({
@@ -240,7 +298,15 @@ const updatePlayer = async (req, res) => {
       jerseyNumber,
       dateOfBirth,
       status,
+      isStarting,
     } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid player ID format",
+      });
+    }
 
     // Get player and verify it exists
     const player = await Player.findById(id);
@@ -288,6 +354,7 @@ const updatePlayer = async (req, res) => {
         jerseyNumber,
         dateOfBirth,
         status,
+        isStarting,
       },
       { new: true, runValidators: true },
     )
@@ -297,10 +364,14 @@ const updatePlayer = async (req, res) => {
     // Update team's average rating
     await updateTeamRating(player.team);
 
+    await refreshPlayerMarketValue(updatedPlayer);
+
+    const refreshedPlayer = await Player.findById(id).populate("team").populate("stats");
+
     res.status(200).json({
       success: true,
       message: "Player updated successfully",
-      data: updatedPlayer,
+      data: refreshedPlayer || updatedPlayer,
     });
   } catch (err) {
     console.error("Update player error:", err);
@@ -318,6 +389,13 @@ const updatePlayer = async (req, res) => {
 const deletePlayer = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid player ID format",
+      });
+    }
 
     const player = await Player.findById(id);
 
@@ -343,6 +421,10 @@ const deletePlayer = async (req, res) => {
         success: false,
         message: "You don't have permission to delete this player",
       });
+    }
+
+    if (player.photoUrl) {
+      unlinkPublicUpload(player.photoUrl);
     }
 
     // Soft delete player
@@ -374,10 +456,187 @@ const deletePlayer = async (req, res) => {
   }
 };
 
+/**
+ * Upload / replace player headshot (owner only). Field name: multipart "photo"
+ */
+const uploadPlayerPhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded (use form field name "photo")',
+      });
+    }
+
+    const { id } = req.params;
+    const player = await Player.findOne({ _id: id, isDeleted: false });
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found",
+      });
+    }
+
+    const team = await Team.findById(player.team);
+    if (!team || team.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Team not found",
+      });
+    }
+
+    if (team.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to update this player",
+      });
+    }
+
+    const base64Str = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype;
+    player.photoUrl = `data:${mimeType};base64,${base64Str}`;
+    await player.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Player photo updated",
+      data: player,
+    });
+  } catch (err) {
+    console.error("uploadPlayerPhoto error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload photo",
+      ...(process.env.NODE_ENV === "development" && { error: err.message }),
+    });
+  }
+};
+
+/**
+ * Get calculated market value breakdown for a player
+ */
+const getPlayerMarketValue = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const player = await Player.findOne({ _id: id, isDeleted: false });
+
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found",
+      });
+    }
+
+    const stats = await Stats.find({ player: id, isDeleted: false }).sort({ season: -1 });
+    const valueBreakdown = calculatePlayerMarketValue(player, stats);
+
+    if (player.marketValue !== valueBreakdown.finalValue) {
+      player.marketValue = valueBreakdown.finalValue;
+      await player.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Player market value retrieved successfully",
+      data: {
+        playerId: player._id,
+        playerName: player.name,
+        marketValue: player.marketValue ?? valueBreakdown.finalValue,
+        tier: calculateMarketValueTier(player.marketValue ?? valueBreakdown.finalValue),
+        breakdown: valueBreakdown,
+      },
+    });
+  } catch (err) {
+    console.error("Get player market value error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve player market value",
+      ...(process.env.NODE_ENV === "development" && { error: err.message }),
+    });
+  }
+};
+
+/**
+ * Update contract expiry and current form (team owner only)
+ */
+const updatePlayerContract = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
+    const { id } = req.params;
+    const { contractExpiry, currentForm } = req.body;
+
+    const player = await Player.findOne({ _id: id, isDeleted: false });
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found",
+      });
+    }
+
+    const team = await Team.findById(player.team);
+    if (!team || team.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Team not found",
+      });
+    }
+
+    if (team.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to update this player contract",
+      });
+    }
+
+    if (contractExpiry !== undefined) {
+      player.contractExpiry = contractExpiry ? new Date(contractExpiry) : null;
+    }
+    if (currentForm !== undefined) {
+      player.currentForm = Number(currentForm);
+    }
+
+    const valueBreakdown = await refreshPlayerMarketValue(player);
+
+    res.status(200).json({
+      success: true,
+      message: "Player contract details updated successfully",
+      data: {
+        player,
+        marketValue: {
+          marketValue: player.marketValue ?? valueBreakdown?.finalValue ?? null,
+          tier: calculateMarketValueTier(
+            player.marketValue ?? valueBreakdown?.finalValue ?? 0,
+          ),
+          breakdown: valueBreakdown,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("Update player contract error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update player contract details",
+      ...(process.env.NODE_ENV === "development" && { error: err.message }),
+    });
+  }
+};
+
 module.exports = {
   createPlayer,
   getPlayersByTeam,
   getPlayerById,
+  getPlayerMarketValue,
+  updatePlayerContract,
   updatePlayer,
   deletePlayer,
+  uploadPlayerPhoto,
+  refreshPlayerMarketValue,
 };

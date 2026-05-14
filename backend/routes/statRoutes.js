@@ -11,13 +11,7 @@ const {
 
 const router = express.Router();
 
-/**
- * Validation middleware for adding/updating stats
- */
-const validateStats = [
-  body("season")
-    .matches(/^\d{4}\/\d{2}$/)
-    .withMessage("Season must be in format YYYY/YY (e.g., 2023/24)"),
+const statFieldValidators = [
   body("matchesPlayed")
     .optional()
     .isInt({ min: 0 })
@@ -38,7 +32,26 @@ const validateStats = [
     .optional()
     .isInt({ min: 0 })
     .withMessage("Clean sheets must be a non-negative integer"),
+  body("seasonOverallRating")
+    .optional()
+    .isInt({ min: 0, max: 99 })
+    .withMessage("Season overall must be between 0 and 99"),
 ];
+
+/**
+ * Validation for creating stats (season required)
+ */
+const validateStatsCreate = [
+  body("season")
+    .matches(/^\d{4}\/\d{2}$/)
+    .withMessage("Season must be in format YYYY/YY (e.g., 2023/24)"),
+  ...statFieldValidators,
+];
+
+/**
+ * Validation for updating stats (numeric fields only; all optional)
+ */
+const validateStatsUpdate = [...statFieldValidators];
 
 /**
  * Validation middleware for IDs
@@ -56,7 +69,7 @@ router.post(
   "/:playerId/stats",
   authMiddleware,
   validatePlayerId,
-  validateStats,
+  validateStatsCreate,
   addStats,
 );
 router.get("/:playerId/stats", validatePlayerId, getStats);
@@ -65,7 +78,7 @@ router.put(
   "/:statsId",
   authMiddleware,
   validateStatsId,
-  validateStats,
+  validateStatsUpdate,
   updateStats,
 );
 router.delete("/:statsId", authMiddleware, validateStatsId, deleteStats);

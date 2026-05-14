@@ -56,6 +56,13 @@ const StatsSchema = new mongoose.Schema(
       default: 0,
     },
 
+    /** Optional snapshot of player OVR at end of this season (for growth charts) */
+    seasonOverallRating: {
+      type: Number,
+      min: 0,
+      max: 99,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,

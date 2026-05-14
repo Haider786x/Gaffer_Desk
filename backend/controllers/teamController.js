@@ -1,8 +1,11 @@
+const fs = require("fs");
+const mongoose = require("mongoose");
 const Team = require("../models/teamModel");
 const User = require("../models/userModel");
 const Player = require("../models/playerModel");
 const Stats = require("../models/statModel");
 const { validationResult } = require("express-validator");
+const { unlinkPublicUpload } = require("../utils/uploadPaths");
 
 /**
  * Create a new team
@@ -75,7 +78,8 @@ const getTeams = async (req, res) => {
       })
       .skip(skip)
       .limit(limit)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     const total = await Team.countDocuments({ isDeleted: false, ...country });
 
@@ -107,12 +111,20 @@ const getTeamById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID format",
+      });
+    }
+
     const team = await Team.findOne({ _id: id, isDeleted: false })
       .populate({
         path: "players",
         match: { isDeleted: false },
       })
-      .populate("owner", "username email");
+      .populate("owner", "username email")
+      .lean();
 
     if (!team) {
       return res.status(404).json({
@@ -161,6 +173,13 @@ const updateTeam = async (req, res) => {
       budget,
       league,
     } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID format",
+      });
+    }
 
     // Verify team exists and get it
     const team = await Team.findById(id);
@@ -216,6 +235,13 @@ const updateTeam = async (req, res) => {
 const deleteTeam = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid team ID format",
+      });
+    }
 
     const team = await Team.findById(id);
 
@@ -283,11 +309,60 @@ const updateTeamRating = async (teamId) => {
   }
 };
 
+/**
+ * Upload / replace team logo (owner only). Field name: multipart "logo"
+ */
+const uploadTeamLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded (use form field name "logo")',
+      });
+    }
+
+    const { id } = req.params;
+    const team = await Team.findOne({ _id: id, isDeleted: false });
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: "Team not found",
+      });
+    }
+
+    if (team.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have permission to update this team",
+      });
+    }
+
+    const base64Str = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype;
+    team.logoUrl = `data:${mimeType};base64,${base64Str}`;
+    await team.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Logo updated",
+      data: team,
+    });
+  } catch (err) {
+    console.error("uploadTeamLogo error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload logo",
+      ...(process.env.NODE_ENV === "development" && { error: err.message }),
+    });
+  }
+};
+
 module.exports = {
   createTeam,
   getTeams,
   getTeamById,
   updateTeam,
   deleteTeam,
+  uploadTeamLogo,
   updateTeamRating,
 };

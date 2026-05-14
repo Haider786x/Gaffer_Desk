@@ -76,6 +76,7 @@ const register = async (req, res) => {
         username: newUser.username,
         email: newUser.email,
         teams: [],
+        createdAt: newUser.createdAt,
       },
     });
   } catch (err) {
@@ -196,6 +197,7 @@ const login = async (req, res) => {
         email: user.email,
         teams: user.teams,
         isEmailVerified: user.isEmailVerified,
+        createdAt: user.createdAt,
       },
     });
   } catch (err) {

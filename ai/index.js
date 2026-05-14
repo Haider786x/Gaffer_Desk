@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════╗
-║      🤖 StatStriker AI Server      ║
+║      🤖 Gaffer Desk AI Server      ║
 ╠════════════════════════════════════╣
 ║ Port: ${PORT.toString().padEnd(30)}║
 ║ Status: ✅ Running                 ║

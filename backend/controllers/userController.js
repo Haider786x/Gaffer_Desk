@@ -2,6 +2,7 @@ const User = require("../models/userModel");
 const Team = require("../models/teamModel");
 const Player = require("../models/playerModel");
 const Stats = require("../models/statModel");
+const TeamSeasonStat = require("../models/teamSeasonStatModel");
 const { validationResult } = require("express-validator");
 
 /**
@@ -141,6 +142,9 @@ const deleteUser = async (req, res) => {
         for (const player of players) {
           await Stats.deleteMany({ player: player._id });
         }
+
+        // Delete team-level season stat rows
+        await TeamSeasonStat.deleteMany({ team: teamId });
 
         // Delete all players in team
         await Player.deleteMany({ team: teamId });

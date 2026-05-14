@@ -7,7 +7,9 @@ const {
   getTeamById,
   updateTeam,
   deleteTeam,
+  uploadTeamLogo,
 } = require("../controllers/teamController");
+const { uploadTeamLogoMiddleware } = require("../middleware/uploadImages");
 
 const router = express.Router();
 
@@ -90,6 +92,26 @@ const validateTeamId = [param("id").isMongoId().withMessage("Invalid team ID")];
 // Routes
 router.post("/", authMiddleware, validateTeam, createTeam);
 router.get("/", getTeams);
+router.post(
+  "/:id/logo",
+  authMiddleware,
+  validateTeamId,
+  (req, res, next) => {
+    uploadTeamLogoMiddleware(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message:
+            err.code === "LIMIT_FILE_SIZE"
+              ? "File too large (max 2MB)"
+              : err.message || "Upload failed",
+        });
+      }
+      next();
+    });
+  },
+  uploadTeamLogo,
+);
 router.get("/:id", validateTeamId, getTeamById);
 router.put("/:id", authMiddleware, validateTeamId, validateTeam, updateTeam);
 router.delete("/:id", authMiddleware, validateTeamId, deleteTeam);
